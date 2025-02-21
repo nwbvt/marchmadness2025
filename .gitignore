@@ -2,3 +2,4 @@
 data/*.csv
 data/*.zip
 submission.csv
+*.pth
