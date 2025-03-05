@@ -34,6 +34,11 @@ class Data:
         mens_seeds = pd.read_csv('data/MNCAATourneySeeds.csv')
         womens_seeds = pd.read_csv('data/WNCAATourneySeeds.csv')
         self.seeds = pd.concat([mens_seeds, womens_seeds]).set_index(['Season', 'TeamID'])
+        seeded_tourney = self.tourney.join(self.seeds, on=['Season', 'WTeamID'])\
+                                     .join(self.seeds, on=['Season', 'LTeamID'], rsuffix='L')
+        self.tourney['WSeed'] = seeded_tourney.Seed.map(lambda x: int(x[1:3]))
+        self.tourney['LSeed'] = seeded_tourney.SeedL.map(lambda x: int(x[1:3]))
+        self.tourney['SeedDiff'] = self.tourney.WSeed - self.tourney.LSeed
         
     def gen_dataset(self, games=None):
         if games is None:
@@ -76,7 +81,7 @@ class Data:
         test_loader = DataLoader(test_data, batch_size=self.batch_size)
         return train_loader, test_loader
 
-    def tourney_data(self, year=None, after=None, before=None, league=None, train_size=None):
+    def tourney_df(self, year=None, after=None, before=None, league=None):
         df = self.tourney
         if year:
             df = df[df.Season == year]
@@ -86,6 +91,11 @@ class Data:
             df = df[df.Season < before]
         if league:
             df = df[df.League == league]
+        return df
+
+
+    def tourney_data(self, year=None, after=None, before=None, league=None, train_size=None):
+        df = self.tourney_df(year, after, before, league)
         if train_size is None:
             return DataLoader(self.gen_dataset(df), batch_size=self.batch_size)
         else:
