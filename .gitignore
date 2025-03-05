@@ -4,3 +4,4 @@ data/*.zip
 submission.csv
 *.pth
 *.pt
+__pycache__
