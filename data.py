@@ -117,3 +117,18 @@ class Data:
         winner_seed = self.seeds.loc[season, winner].Seed
         loser_seed = self.seeds.loc[season, loser].Seed
         return winner_seed[1:3] > loser_seed[1:3]
+
+    def odds_by_seed_diff(self, year=None, after=None, before=None, league=None):
+        tourney_df = self.tourney_df(year, after, before, league)
+        seed_diff_counts = tourney_df.SeedDiff.value_counts()
+        odds = {0: 0.5}
+        for diff in range(1, 16):
+            if diff in seed_diff_counts:
+                lower_wins = seed_diff_counts[diff]
+                higher_wins = seed_diff_counts[-diff]
+                odds[diff] = higher_wins/(higher_wins + lower_wins)
+                odds[-diff] = lower_wins/(higher_wins + lower_wins)
+            else:
+                odds[diff] = 1
+                odds[-diff] = 0
+        return odds

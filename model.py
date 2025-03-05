@@ -1,6 +1,7 @@
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+import numpy as np
 from data import STATS_COLUMNS
 
 DEVICE = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
@@ -100,3 +101,71 @@ def gen_submission(model, data, season=2025, device=DEVICE, fname="submission.cs
             for (t1, t2), pred in zip(matchups, predictions):
                 f.write(f"{season}_{t1.item()}_{t2.item()},{pred.item()}\n")
 
+class ModeratedModel:
+    def __init__(self, model, weight, device=DEVICE):
+        self.model = model
+        self.weight = weight
+        self.device=device
+
+    def eval(self):
+        pass
+
+    def __call__(self, x):
+        scores, model_score = self.model(x)
+        neutral = torch.Tensor(np.array([0.5]*len(model_score)).reshape((-1,1))).to(self.device)
+        return scores, model_score * self.weight + neutral * (1-self.weight)
+
+class SeedModel:
+    def __init__(self, dataset, year=None, after=None, before=None, league=None, device=DEVICE):
+        self.odds = dataset.odds_by_seed_diff(year, after, before, league)
+        self.seeds = dataset.seeds
+        self.device=device
+        self.programs = dataset.programs
+
+    def eval(self):
+        pass
+
+    def seed(self, season, team):
+        if (season, team) in self.seeds.index:
+            return int(self.seeds.loc[season, team].Seed[1:3])
+        else:
+            return -1
+
+    def win_odds(self, team1, team2):
+        if team1 == -1:
+            if team2 == -1:
+                return 0.5
+            return 0
+        if team2 == -1:
+            return 1
+        return self.odds[team1-team2]
+        
+    
+    def __call__(self, x):
+        team_1 = self.programs.loc[x[:,0].int().cpu()].TeamID
+        team_2 = self.programs.loc[x[:,2].int().cpu()].TeamID
+        season = x[:,4].int().cpu()
+        team_1_seed = [self.seed(s, t) for s,t in np.stack([season, team_1], axis=1)]
+        team_2_seed = [self.seed(s, t) for s,t in np.stack([season, team_2], axis=1)]
+        stats = torch.zeros((len(x), len(STATS_COLUMNS*2))).to(self.device)
+        results = torch.Tensor([self.win_odds(t1, t2) for t2, t1 in
+                                zip(team_1_seed, team_2_seed)]).to(self.device).reshape([-1,1])
+        return results, stats
+
+class HybridModel(object):
+    def __init__(self, models, weights, device=DEVICE):
+        self.models = models
+        self.weights = weights
+        self.device = device
+
+    def eval(self):
+        pass
+
+    def __call__(self, x):
+        results = torch.zeros(len(x)).reshape([-1,1]).to(self.device)
+        stats = torch.zeros((len(x), len(STATS_COLUMNS*2))).to(self.device)
+        for model, weight in zip(self.models, self.weights):
+            result, stats = model(x)
+            results += weight * result
+            stats += weight * stats
+        return results, stats
