@@ -34,7 +34,8 @@ class Model(nn.Module):
         result = F.sigmoid(self.result_fc(hidden2))
         return result, stats
 
-def train(data, model, loss_fn, optimizer, device=DEVICE, full_loss=True):
+def train_epoch(data, model, optimizer, device=DEVICE, full_loss=True):
+    loss_fn = nn.MSELoss()
     size = len(data.dataset)
     model.train()
     for batch, (x, y) in enumerate(data):
@@ -56,7 +57,8 @@ def train(data, model, loss_fn, optimizer, device=DEVICE, full_loss=True):
             result_loss, current = result_loss.item(), (batch + 1) * len(x)
             print(f"result loss: {result_loss:>7f} [{current:>6d}/{size:>6d}]", end="\r")
 
-def test(data, model, loss_fn, device=DEVICE, label="Test"):
+def test(data, model, device=DEVICE, label="Test"):
+    loss_fn = nn.MSELoss()
     size = len(data.dataset)
     num_batches = len(data)
     model.eval()
@@ -75,6 +77,30 @@ def test(data, model, loss_fn, device=DEVICE, label="Test"):
     result_loss /= size
     correct /= size
     print(f"{label}: Accuracy: {(100*correct):>0.2f}%, Stats loss: {stats_loss:>8f} Result loss: {result_loss:>8f}")
+    return result_loss
+
+def train(train_data, test_data, model, learning_rate, 
+          device=DEVICE, full_loss=True,
+          max_epochs=100, streak=5, checkpoint="checkpoint.pth"):
+    optimizer = torch.optim.Adam(model.parameters(), lr=learning_rate)
+    best_loss = test(test_data, model, device, label="Initial")
+    curr_streak = 0
+    for i in range(max_epochs):
+        print(f"Epoch {i}")
+        train_epoch(train_data, model, optimizer, device, full_loss)
+        test(train_data, model, device, label="Train")
+        loss = test(test_data, model, device, label="Test")
+        if loss < best_loss:
+            best_loss = loss
+            torch.save(model.state_dict(), checkpoint)
+            curr_streak = 0
+        else:
+            curr_streak += 1
+            if curr_streak >= streak:
+                break
+    print(f"Best Loss: {best_loss:>8f}")
+    model.load_state_dict(torch.load(checkpoint))
+    return
 
 def feature_eval(model, data, device=DEVICE):
     model.eval()
