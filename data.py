@@ -23,6 +23,7 @@ class Data:
         self.programs = self.teams.TeamID.drop_duplicates().reset_index()
         self.teamMapping = {(x.TeamID, x.Season): x.Index for x in self.teams.itertuples()}
         self.programMapping = {x.TeamID: x.Index for x in self.programs.itertuples()}
+        self.reverseMapping = {v: k for k,v in self.programMapping.items()}
         mens_teams = pd.read_csv(f'{folder}/MTeams.csv').set_index('TeamID')
         womens_teams = pd.read_csv(f'{folder}/WTeams.csv').set_index('TeamID')
         self.all_teams = pd.concat([mens_teams, womens_teams])
@@ -32,13 +33,25 @@ class Data:
         womens_tourney['League'] = 'W'
         self.tourney = pd.concat([mens_tourney, womens_tourney])
         mens_seeds = pd.read_csv('data/MNCAATourneySeeds.csv')
+        mens_seeds['League'] = 'M'
         womens_seeds = pd.read_csv('data/WNCAATourneySeeds.csv')
-        self.seeds = pd.concat([mens_seeds, womens_seeds]).set_index(['Season', 'TeamID'])
-        seeded_tourney = self.tourney.join(self.seeds, on=['Season', 'WTeamID'])\
-                                     .join(self.seeds, on=['Season', 'LTeamID'], rsuffix='L')
+        womens_seeds['League'] = 'W'
+        self.seeds = pd.concat([mens_seeds, womens_seeds]).set_index(['Season', 'League', 'TeamID'])
+        seeded_tourney = self.tourney.join(self.seeds, on=['Season', 'League', 'WTeamID'])\
+                                     .join(self.seeds, on=['Season', 'League', 'LTeamID'], rsuffix='L')
         self.tourney['WSeed'] = seeded_tourney.Seed.map(lambda x: int(x[1:3]))
         self.tourney['LSeed'] = seeded_tourney.SeedL.map(lambda x: int(x[1:3]))
         self.tourney['SeedDiff'] = self.tourney.WSeed - self.tourney.LSeed
+        mens_slots = pd.read_csv(f'{folder}/MNCAATourneySlots.csv')
+        mens_slots['League'] = 'M'
+        womens_slots = pd.read_csv(f'{folder}/WNCAATourneySlots.csv')
+        womens_slots['League'] = 'W'
+        slots = pd.concat([mens_slots, womens_slots]).set_index(['Season', 'League', 'Slot'])
+        seeds_by_slot = pd.concat([mens_seeds, womens_seeds]).set_index(['Season', 'League', 'Seed'])
+        self.schedule = slots.\
+            join(seeds_by_slot, on=['Season', 'League', 'StrongSeed']).\
+            join(seeds_by_slot, on=['Season', 'League', 'WeakSeed'], rsuffix='2')
+
         
     def gen_dataset(self, games=None):
         if games is None:
@@ -114,8 +127,8 @@ class Data:
         return matchups, matchups_tensor
 
     def upset(self, season, winner, loser):
-        winner_seed = self.seeds.loc[season, winner].Seed
-        loser_seed = self.seeds.loc[season, loser].Seed
+        winner_seed = self.seeds.loc[season, :, winner].Seed.max()
+        loser_seed = self.seeds.loc[season, :, loser].Seed.max()
         return winner_seed[1:3] > loser_seed[1:3]
 
     def odds_by_seed_diff(self, year=None, after=None, before=None, league=None):

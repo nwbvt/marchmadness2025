@@ -92,14 +92,17 @@ def feature_eval(model, data, device=DEVICE):
         stats_grads += torch.autograd.grad(model(x)[1].mean(), x)[0].sum(axis=0)[4:]
     return program_grads/size, team_grads/size, stats_grads
 
+def model_odds(data, season, league, model, device=DEVICE):
+    matchups, matchups_tensor = data.all_matchups(season, league)
+    predictions, _ = model(matchups_tensor.to(device))
+    return {(int(t1), int(t2)): pred.item() for ((t1, t2), pred) in zip(matchups, predictions)}
+
 def gen_submission(model, data, season=2025, device=DEVICE, fname="submission.csv"):
     with open('submission.csv', 'w') as f:
         f.write("ID,Pred\n")
         for league in ('M', 'W'):
-            matchups, matchups_tensor = data.all_matchups(season, league)
-            predictions, _ = model(matchups_tensor.to(device))
-            for (t1, t2), pred in zip(matchups, predictions):
-                f.write(f"{season}_{t1.item()}_{t2.item()},{pred.item()}\n")
+            for (t1, t2), pred in model_odds(data, season, league, model, device).items():
+                f.write(f"{season}_{t1}_{t2},{pred}\n")
 
 class ModeratedModel:
     def __init__(self, model, weight, device=DEVICE):
@@ -121,13 +124,14 @@ class SeedModel:
         self.seeds = dataset.seeds
         self.device=device
         self.programs = dataset.programs
+        self.program_mapping = dataset.reverseMapping
 
     def eval(self):
         pass
 
-    def seed(self, season, team):
-        if (season, team) in self.seeds.index:
-            return int(self.seeds.loc[season, team].Seed[1:3])
+    def seed(self, season, league, team):
+        if (season, league, team) in self.seeds.index:
+            return int(self.seeds.loc[season, league, self.programMapping[team]].Seed[1:3])
         else:
             return -1
 
@@ -142,11 +146,8 @@ class SeedModel:
         
     
     def __call__(self, x):
-        team_1 = self.programs.loc[x[:,0].int().cpu()].TeamID
-        team_2 = self.programs.loc[x[:,2].int().cpu()].TeamID
-        season = x[:,4].int().cpu()
-        team_1_seed = [self.seed(s, t) for s,t in np.stack([season, team_1], axis=1)]
-        team_2_seed = [self.seed(s, t) for s,t in np.stack([season, team_2], axis=1)]
+        team_1_seed = [self.seed(s, 'M' if mens else 'W', t) for s,t,mens in x[:,[4,0,6]]]
+        team_2_seed = [self.seed(s, 'M' if mens else 'W', t) for s,t,mens in x[:,[4,2,6]]]
         stats = torch.zeros((len(x), len(STATS_COLUMNS*2))).to(self.device)
         results = torch.Tensor([self.win_odds(t1, t2) for t2, t1 in
                                 zip(team_1_seed, team_2_seed)]).to(self.device).reshape([-1,1])
@@ -169,3 +170,23 @@ class HybridModel(object):
             results += weight * result
             stats += weight * stats
         return results, stats
+
+def gen_bracket(data, season, league, model):
+    odds = model_odds(data, season, league, model)
+    schedule = data.schedule.loc[season, league, :].copy()
+    schedule.insert(len(schedule.columns), 'Winner', -1)
+    schedule.insert(len(schedule.columns), 'P', -1.0)
+    i=0
+    while sum(schedule.Winner < 0) and i <= 10:
+        i+=1
+        games = schedule[(schedule.Winner < 0) & schedule.TeamID.notna() & schedule.TeamID2.notna()][['TeamID', 'TeamID2']]
+        for slot, t1, t2 in games.itertuples():
+            if t1 > t2:
+                t1, t2 = t2, t1
+            p = odds[(t1, t2)]
+            schedule.loc[slot, 'P'] = p
+            winner = t1 if p > 0.5 else t2
+            schedule.loc[slot, 'Winner'] = winner
+            schedule.loc[schedule.StrongSeed == slot, 'TeamID'] = winner
+            schedule.loc[schedule.WeakSeed == slot, 'TeamID2'] = winner
+    return schedule
