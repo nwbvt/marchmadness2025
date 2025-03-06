@@ -6,20 +6,11 @@ from data import STATS_COLUMNS
 
 DEVICE = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
 
-class Model(nn.Module):
-    def __init__(self, embedding_sizes, model_sizes, dropout, dataset):
-        super(Model, self).__init__()
-        p_embedding_size, t_embedding_size = embedding_sizes
-        hid1, hid2 = model_sizes
-        self.team_embedding = nn.Embedding(len(dataset.teams), p_embedding_size)
-        self.program_embedding = nn.Embedding(len(dataset.programs), t_embedding_size)
-        self.dropout1 = nn.Dropout(dropout)
-        self.dropout2 = nn.Dropout(dropout)
-        self.dropout3 = nn.Dropout(dropout)
-        self.fc1 = nn.Linear(2*p_embedding_size+2*t_embedding_size+3, hid1)
-        self.fc2 = nn.Linear(hid1, hid2)
-        self.stats_fc = nn.Linear(hid2, 2*len(STATS_COLUMNS))
-        self.result_fc = nn.Linear(hid2, 1)
+class MatchupLayer(nn.Module):
+    def __init__(self, program_embedding, team_embedding, num_programs, num_teams):
+        super(MatchupLayer, self).__init__()
+        self.team_embedding = nn.Embedding(num_teams, team_embedding)
+        self.program_embedding = nn.Embedding(num_programs, program_embedding)
         self.double()
 
     def forward(self, x):
@@ -27,7 +18,37 @@ class Model(nn.Module):
         team = self.team_embedding(x[:,1].int())
         opponent_program = self.program_embedding(x[:,2].int())
         opponent = self.team_embedding(x[:,3].int())
-        matchup = self.dropout1(torch.cat([program, team, opponent_program, opponent, x[:,4:]], axis=1))
+        matchup = torch.cat([program, team, opponent_program, opponent, x[:,4:]], axis=1)
+        return matchup
+
+    def freeze(self):
+        for param in self.team_embedding.parameters():
+            param.requires_grad=False
+        for param in self.program_embedding.parameters():
+            param.requires_grad=False
+
+    def unfreeze(self):
+        for param in self.team_embedding.parameters():
+            param.requires_grad=True
+        for param in self.program_embedding.parameters():
+            param.requires_grad=True
+
+class Model(nn.Module):
+    def __init__(self, program_embedding, team_embedding, num_programs, num_teams, model_sizes, dropout):
+        super(Model, self).__init__()
+        hid1, hid2 = model_sizes
+        self.matchup = MatchupLayer(program_embedding, team_embedding, num_programs, num_teams)
+        self.dropout1 = nn.Dropout(dropout)
+        self.dropout2 = nn.Dropout(dropout)
+        self.dropout3 = nn.Dropout(dropout)
+        self.fc1 = nn.Linear(2*program_embedding+2*team_embedding+3, hid1)
+        self.fc2 = nn.Linear(hid1, hid2)
+        self.stats_fc = nn.Linear(hid2, 2*len(STATS_COLUMNS))
+        self.result_fc = nn.Linear(hid2, 1)
+        self.double()
+
+    def forward(self, x):
+        matchup = self.dropout1(self.matchup(x))
         hidden1 = self.dropout2(F.relu(self.fc1(matchup)))
         hidden2 = self.dropout3(F.relu(self.fc2(hidden1)))
         stats = self.stats_fc(hidden2)
@@ -104,8 +125,8 @@ def train(train_data, test_data, model, learning_rate,
 
 def feature_eval(model, data, device=DEVICE):
     model.eval()
-    team_grads = torch.zeros(model.team_embedding.embedding_dim).to(device)
-    program_grads = torch.zeros(model.program_embedding.embedding_dim).to(device)
+    team_grads = torch.zeros(model.matchup.team_embedding.embedding_dim).to(device)
+    program_grads = torch.zeros(model.matchup.program_embedding.embedding_dim).to(device)
     stats_grads = torch.zeros(3).to(device)
     size = len(data.dataset)
     for batch, (x, y) in enumerate(data):
@@ -113,8 +134,8 @@ def feature_eval(model, data, device=DEVICE):
         y = y.to(device)
         x.requires_grad = True
         _, pred_result = model(x)
-        team_grads += torch.autograd.grad(model(x)[1].mean(), model.team_embedding.parameters())[0].sum(axis=0)
-        program_grads += torch.autograd.grad(model(x)[1].mean(), model.program_embedding.parameters())[0].sum(axis=0)
+        team_grads += torch.autograd.grad(model(x)[1].mean(), model.matchup.team_embedding.parameters())[0].sum(axis=0)
+        program_grads += torch.autograd.grad(model(x)[1].mean(), model.matchup.program_embedding.parameters())[0].sum(axis=0)
         stats_grads += torch.autograd.grad(model(x)[1].mean(), x)[0].sum(axis=0)[4:]
     return program_grads/size, team_grads/size, stats_grads
 
