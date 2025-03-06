@@ -130,8 +130,8 @@ class SeedModel:
         pass
 
     def seed(self, season, league, team):
-        if (season, league, team) in self.seeds.index:
-            return int(self.seeds.loc[season, league, self.programMapping[team]].Seed[1:3])
+        if (season, league, self.program_mapping[team]) in self.seeds.index:
+            return int(self.seeds.loc[season, league, self.program_mapping[team]].Seed[1:3])
         else:
             return -1
 
@@ -146,8 +146,8 @@ class SeedModel:
         
     
     def __call__(self, x):
-        team_1_seed = [self.seed(s, 'M' if mens else 'W', t) for s,t,mens in x[:,[4,0,6]]]
-        team_2_seed = [self.seed(s, 'M' if mens else 'W', t) for s,t,mens in x[:,[4,2,6]]]
+        team_1_seed = [self.seed(s.item(), 'M' if mens else 'W', t.item()) for s,t,mens in x[:,[4,0,6]]]
+        team_2_seed = [self.seed(s.item(), 'M' if mens else 'W', t.item()) for s,t,mens in x[:,[4,2,6]]]
         stats = torch.zeros((len(x), len(STATS_COLUMNS*2))).to(self.device)
         results = torch.Tensor([self.win_odds(t1, t2) for t2, t1 in
                                 zip(team_1_seed, team_2_seed)]).to(self.device).reshape([-1,1])
