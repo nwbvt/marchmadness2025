@@ -53,7 +53,7 @@ class Data:
             join(seeds_by_slot, on=['Season', 'League', 'WeakSeed'], rsuffix='2')
 
         
-    def gen_dataset(self, games=None):
+    def gen_dataset(self, games=None, output_stats=False):
         if games is None:
             games = self.games
         w_stats_columns = [f"W{stat}" for stat in STATS_COLUMNS]
@@ -69,26 +69,30 @@ class Data:
         losing_matchups = np.stack([losing_program, losing_team,
                                     winning_program, winning_team, 
                                     games.Season, games.DayNum, games.League == 'M'], axis=1)
-        winner_y = np.concatenate([np.ones((n, 1)), games[w_stats_columns], games[l_stats_columns]], axis=1)
-        loser_y = np.concatenate([np.zeros((n, 1)), games[l_stats_columns], games[w_stats_columns]], axis=1)
+        if output_stats:
+            winner_y = np.concatenate([games[w_stats_columns], games[l_stats_columns]], axis=1)
+            loser_y = np.concatenate([games[l_stats_columns], games[w_stats_columns]], axis=1)
+        else:
+            winner_y = np.ones((n,1))
+            loser_y = np.zeros((n,1))
         x_tensor = torch.from_numpy(np.concatenate([winning_matchups, losing_matchups])).double()
         y_tensor = torch.from_numpy(np.concatenate([winner_y, loser_y])).double()
         return TensorDataset(x_tensor, y_tensor)
 
-    def train_test_data(self, train_size=0.9, use_cache=True):
-        train_cache = "train_dataset.pt"
-        test_cache = "test_dataset.pt"
-        if use_cache and os.path.isfile(train_cache) and os.path.isfile(test_cache):
+    def train_test_data(self, train_size=0.9, cache=False, output_stats=False):
+        train_cache = f"{cache}_train_dataset.pt"
+        test_cache = f"{cache}_test_dataset.pt"
+        if cache and os.path.isfile(train_cache) and os.path.isfile(test_cache):
             print("Loading cached data")
             train_data = torch.load(train_cache, weights_only=False)
             test_data = torch.load(test_cache, weights_only=False)
         else:
             train_df, test_df = train_test_split(self.games)
             print("Generating train dataset")
-            train_data = self.gen_dataset(train_df)
+            train_data = self.gen_dataset(train_df, output_stats=output_stats)
             torch.save(train_data, train_cache)
             print("Generating test dataset")
-            test_data = self.gen_dataset(test_df)
+            test_data = self.gen_dataset(test_df, output_stats=output_stats)
             torch.save(test_data, test_cache)
         train_loader = DataLoader(train_data, batch_size=self.batch_size, shuffle=True)
         test_loader = DataLoader(test_data, batch_size=self.batch_size)
