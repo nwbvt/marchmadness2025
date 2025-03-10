@@ -1,4 +1,5 @@
 import os
+import random
 import pandas as pd
 from dataclasses import dataclass
 import torch
@@ -79,7 +80,8 @@ class Data:
         y_tensor = torch.from_numpy(np.concatenate([winner_y, loser_y])).double()
         return TensorDataset(x_tensor, y_tensor)
 
-    def train_test_data(self, train_size=0.9, cache=False, output_stats=False):
+    def train_test_data(self, train_size=0.9, cache=False, output_stats=False, seed=20250310):
+        random.seed(seed)
         train_cache = f"{cache}_train_dataset.pt"
         test_cache = f"{cache}_test_dataset.pt"
         if cache and os.path.isfile(train_cache) and os.path.isfile(test_cache):
