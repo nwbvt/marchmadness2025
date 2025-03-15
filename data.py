@@ -89,7 +89,7 @@ class Data:
             train_data = torch.load(train_cache, weights_only=False)
             test_data = torch.load(test_cache, weights_only=False)
         else:
-            train_df, test_df = train_test_split(self.games)
+            train_df, test_df = train_test_split(self.games, train_size=train_size)
             print("Generating train dataset")
             train_data = self.gen_dataset(train_df, output_stats=output_stats)
             torch.save(train_data, train_cache)
