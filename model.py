@@ -167,7 +167,7 @@ def model_odds(data, season, league, model, device=DEVICE):
     return {(int(t1), int(t2)): pred.item() for ((t1, t2), pred) in zip(matchups, predictions)}
 
 def gen_submission(model, data, season=2025, device=DEVICE, fname="submission.csv"):
-    with open('submission.csv', 'w') as f:
+    with open(fname, 'w') as f:
         f.write("ID,Pred\n")
         for league in ('M', 'W'):
             for (t1, t2), pred in model_odds(data, season, league, model, device).items():
