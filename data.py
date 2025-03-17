@@ -123,13 +123,16 @@ class Data:
             test_loader = DataLoader(test, batch_size=self.batch_size)
             return train_loader, test_loader
 
+    def matchup(self, t1, t2, season, league):
+        return [self.programMapping[t1], self.teamMapping[(t1, season)],
+                self.programMapping[t2], self.teamMapping[(t2, season)],
+                season, 140, league == 'M']
+
     def all_matchups(self, season, league):
         teams_to_test = sorted(self.teams[(self.teams.Season==season) & (self.teams.League==league)].TeamID.values)
         matchups = [(t1, t2) for t1 in teams_to_test for t2 in teams_to_test if t1 < t2]
         matchups_tensor = torch.Tensor(np.array(
-            [[self.programMapping[t1], self.teamMapping[(t1, season)],
-              self.programMapping[t2], self.teamMapping[(t2, season)],
-              season, 140, league == 'M'] for (t1, t2) in matchups])).int()
+            [self.matchup(t1, t2, season, league) for (t1, t2) in matchups])).int()
         return matchups, matchups_tensor
 
     def upset(self, season, winner, loser):

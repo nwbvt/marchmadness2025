@@ -1,7 +1,7 @@
 .ipynb_checkpoints
 data/*.csv
 data/*.zip
-submission.csv
+*.csv
 *.pth
 *.pt
 __pycache__

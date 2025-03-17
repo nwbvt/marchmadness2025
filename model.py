@@ -256,3 +256,11 @@ def gen_bracket(data, season, league, model):
             schedule.loc[schedule.StrongSeed == slot, 'TeamID'] = winner
             schedule.loc[schedule.WeakSeed == slot, 'TeamID2'] = winner
     return schedule
+
+# Compute the total score of the championship game
+def tiebreaker(bracket, stats_model, dataset, season, league, device=DEVICE):
+    t1, t2 = bracket.loc[['R5WX', 'R5YZ']].Winner
+    championship = torch.Tensor(np.array([dataset.matchup(t1, t2, season, league)]))
+    stats_model.eval()
+    with torch.no_grad():
+        return stats_model(championship.to(device))[0,[0,14]].sum().item()
