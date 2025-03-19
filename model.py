@@ -251,7 +251,12 @@ def gen_bracket(data, season, league, model):
                 t1, t2 = t2, t1
             p = odds[(t1, t2)]
             schedule.loc[slot, 'P'] = p
-            winner = t1 if p > 0.5 else t2
+            if p > 0.5:
+                winner = t1
+                schedule.loc[slot, 'P'] = p
+            else:
+                winner = t2
+                schedule.loc[slot, 'P'] = 1-p
             schedule.loc[slot, 'Winner'] = winner
             schedule.loc[schedule.StrongSeed == slot, 'TeamID'] = winner
             schedule.loc[schedule.WeakSeed == slot, 'TeamID2'] = winner
