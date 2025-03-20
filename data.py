@@ -82,6 +82,7 @@ class Data:
 
     def train_test_data(self, train_size=0.9, cache=False, output_stats=False, seed=20250310):
         random.seed(seed)
+        np.random.seed(seed)
         train_cache = f"{cache}_train_dataset.pt"
         test_cache = f"{cache}_test_dataset.pt"
         if cache and os.path.isfile(train_cache) and os.path.isfile(test_cache):
