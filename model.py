@@ -156,9 +156,9 @@ def feature_eval(model, data, device=DEVICE):
         y = y.to(device)
         x.requires_grad = True
         pred_result = model(x)
-        team_grads += torch.autograd.grad(model(x)[1].mean(), model.matchup.team_embedding.parameters())[0].sum(axis=0)
-        program_grads += torch.autograd.grad(model(x)[1].mean(), model.matchup.program_embedding.parameters())[0].sum(axis=0)
-        stats_grads += torch.autograd.grad(model(x)[1].mean(), x)[0].sum(axis=0)[4:]
+        team_grads += torch.autograd.grad(model(x).mean(), model.matchup.team_embedding.parameters())[0].sum(axis=0)
+        program_grads += torch.autograd.grad(model(x).mean(), model.matchup.program_embedding.parameters())[0].sum(axis=0)
+        stats_grads += torch.autograd.grad(model(x).mean(), x)[0].sum(axis=0)[4:]
     return program_grads/size, team_grads/size, stats_grads
 
 def model_odds(data, season, league, model, device=DEVICE):
