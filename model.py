@@ -3,6 +3,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
+import pandas as pd
 from data import STATS_COLUMNS
 
 DEVICE = torch.accelerator.current_accelerator().type if torch.accelerator.is_available() else "cpu"
@@ -269,3 +270,18 @@ def tiebreaker(bracket, stats_model, dataset, season, league, device=DEVICE):
     stats_model.eval()
     with torch.no_grad():
         return stats_model(championship.to(device))[0,[0,14]].sum().item()
+
+
+def gen_round_df(dataset, games, models, device=DEVICE):
+    tensor = torch.Tensor(np.array([dataset.matchup(winner, loser, 2025, league)
+                                    for winner, loser, league in games])).to(device)
+    model_preds = {model_name: model(tensor) for model_name, model in models.items()}
+    t1,t2 = zip(*[(t1,t2) for t1, t2, _ in games])
+    t1 = list(t1)
+    t2 = list(t2)
+    df = pd.DataFrame({'team1Name': dataset.all_teams.TeamName.loc[t1].values,
+                       'team2Name': dataset.all_teams.TeamName.loc[t2].values,
+                       'team1ID': t1, 'team2ID': t2})
+    for model_name, preds in model_preds.items():
+        df[model_name] = preds.reshape(-1).tolist()
+    return df
